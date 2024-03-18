@@ -1,0 +1,278 @@
+Program.Sub.Preflight.Start
+Program.External.Include.Library("UPLAROP.lib")
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String,"")
+V.Local.sRet.Declare(String,"")
+V.Local.sTemp.Declare(String,"")
+V.Local.sDataType.Declare(String,"")
+V.Local.sCol.Declare(String,"")
+V.Local.iCount.Declare(Long,0)
+V.Local.i.Declare(Long,0)
+V.Local.bRet.Declare(Boolean,False)
+
+F.Intrinsic.Control.SelectCase(V.Caller.Hook)
+	F.Intrinsic.Control.Case("15226")
+		'Check if table GCG_6417_L_AR_Batch exists
+		F.ODBC.Connection!Con.OpenCompanyConnection(999)
+		F.ODBC.Connection!Con.TableExists("GCG_6417_L_AR_Batch",V.Local.bRet)
+		F.Intrinsic.Control.If(V.Local.bRet,=,False)
+			F.ODBC.Connection!Con.Execute("Create Table GCG_6417_L_AR_Batch (GCG_AR_BATCH CHAR(5) NOT NULL);")
+			F.ODBC.Connection!Con.Execute("Insert Into GCG_6417_L_AR_Batch (GCG_AR_BATCH) Values ('M0000')")
+		F.Intrinsic.Control.EndIf
+		'Loads name of BDF and ID into memory
+		F.Intrinsic.BDF.Load("AUX001","AUX001")
+		
+		F.Intrinsic.BDF.ReadColumnTitle("AUX001",V.Local.sCol)
+		
+		'Col								'YYYYMMDD		I or C					Y or N
+		'Invoice Number*!*Customer Number*!*Invoice Date*!*Invoice/Credit Memo*!*Email Invoice
+		'String        *!*String         *!*String      *!*String             *!*String
+		F.Intrinsic.BDF.ReadColumnDataType("AUX001",V.Local.sDataType)
+		F.Intrinsic.String.Replace(V.Local.sDataType,"Numeric","Float",V.Local.sDataType)
+		
+		F.Intrinsic.BDF.ReadRowCount("AUX001",V.Local.iCount)
+		F.Intrinsic.Math.Sub(V.Local.iCount,1,V.Local.iCount)
+		F.Intrinsic.Control.For(V.Local.i,0,V.Local.iCount,1)
+			F.Intrinsic.BDF.ReadRow("AUX001",V.Local.i,V.Local.sTemp)
+			F.Intrinsic.Control.If(V.Local.sRet.Length,=,0)
+				V.Local.sRet.Set(V.Local.sTemp)
+			F.Intrinsic.Control.Else
+				F.Intrinsic.String.Build("{0}{1}{2}",V.Local.sRet,V.Ambient.NewLine,V.Local.sTemp,V.Local.sRet)
+			F.Intrinsic.Control.EndIf
+		F.Intrinsic.Control.Next(V.Local.i)
+		'when built with bdf functions
+		F.Data.DataTable.CreateFromString("BDF",V.Local.sRet,V.Local.sCol,V.Local.sDataType,"|~|",V.Ambient.NewLine,True)
+		F.Intrinsic.Control.If(V.DataTable.BDF.RowCount--,<>,-1)
+			F.Intrinsic.Control.CallSub(UPLGDETL)
+		F.Intrinsic.Control.EndIf
+		
+		F.Intrinsic.Control.CallSub(Get_Sales_Hist)
+		
+		F.ODBC.Connection!Con.Close
+		
+F.Intrinsic.Control.EndSelect
+
+F.Intrinsic.Control.CallSub(Exit)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: GCG_6417_Progress_UPLGDETL.g2u {0}{0}Subroutine: {1}{0}Error Occurred {2} with description {3}",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Exit)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.Exit.Start
+F.Intrinsic.Control.SetErrorHandler("Exit_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String,"")
+
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Exit_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.Control.End
+Function.Intrinsic.Control.EndIf
+Program.Sub.Exit.End
+
+Program.Sub.UPLGDETL.Start
+F.Intrinsic.Control.SetErrorHandler("UPLGDETL_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String,"")
+V.Local.i.Declare(Long,0)
+V.Local.iCount.Declare(Long,0)
+V.Local.sSql.Declare(String,"")
+V.Local.sBatchDetail.Declare(String,"")
+V.Local.sData.Declare(String,"")
+V.Local.sFile.Declare(String,"")
+V.Local.bRet.Declare(Boolean,False)
+V.Local.sBatch.Declare(String,"")
+V.Local.sGLAcct.Declare(String,"")
+V.Local.sRetGLAcct.Declare(String,"")
+V.Local.fBillAmt.Declare(Float,0)
+V.Local.fRetAmt.Declare(Float,0)
+V.Local.iBatchLine.Declare(Long,0)
+v.Local.sBatchLineNumber.Declare(String,"")
+v.Local.sInvoiceDate.Declare(String,"")
+v.Local.sInvoiceDueDate.Declare(String,"")
+v.Local.sSalesman.Declare(String,"")
+V.Local.sInvoiceDate2.Declare(String,"")
+
+F.ODBC.Connection!Con.ExecuteAndReturn("Select GCG_AR_BATCH From GCG_6417_L_AR_Batch",V.Local.sBatch)
+
+F.Intrinsic.Control.If(V.Local.sBatch,=,"M9999")
+	V.Local.sBatch.Set("M0001")
+F.Intrinsic.Control.Else
+	F.Intrinsic.String.Right(v.Local.sBatch.Trim, 4, v.Local.sBatch)
+	F.Intrinsic.Control.If(v.Local.sBatch.IsNumeric)
+		F.Intrinsic.Math.Add(v.Local.sBatch.Long, 1, v.Local.sBatch)
+		F.Intrinsic.String.LPad(v.Local.sBatch, "0", 4, v.Local.sBatch)
+		F.Intrinsic.String.Build("M{0}",v.Local.sBatch, v.Local.sBatch)
+	F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.String.Build("Update GCG_6417_L_AR_Batch Set GCG_AR_BATCH = '{0}'",V.Local.sBatch,V.Local.sSql)
+F.ODBC.Connection!Con.Execute(V.Local.sSql)
+
+'data(0) Acct #  size 15
+'data(1) Post Date size 8
+'data(2) Batch size 5
+'data(3) Batch Line size 5
+'data(4) Voucher Number size 7
+'data(5) Reference size 15
+'data(6) Amount size 16
+'data(7) Description size 30
+'data(8) Application Type size 2
+'data(9) Transaction Type 05 ? Invoice Adjustment size 2
+'data(10) CustomID,VendorID, PO Number, Invoice Number, Invoice Date, INvoice Due Date, Check System, Check Number, Check Date, Check Gross Amount, Check Discount Amount, check Net Amount 7,7,7,15,8,8,2,6,8,16,11,16  total size 111
+
+F.Intrinsic.Control.For(V.Local.i,0,V.DataTable.BDF.RowCount--,1)
+	F.Intrinsic.String.Build("Select SO_NUM, SO_LINE From PRT_Laser_Invoice Where Invoice_NO = '{0}' and Customer = '{1}' and Invoice_Type = 'S' and Terminal_No = '{2}'",V.DataTable.BDF(V.Local.i).Invoice Number!FieldValTrim,V.DataTable.BDF(V.Local.i).Customer Number!FieldValTrim,V.Caller.Terminal,V.Local.sSql)
+	F.Data.DataTable.CreateFromSQL("SOLine","con",V.Local.sSql,True)
+	F.Intrinsic.Control.For(V.Local.iCount,0,V.DataTable.SOLine.RowCount--,1)
+		F.Intrinsic.String.Build("Select GL_Account From V_Order_Lines Where Order_No = '{0}' and Record_No = '{1}'",V.DataTable.SOLine(V.Local.iCount).SO_Num!FieldValTrim,V.DataTable.SOLine(V.Local.iCount).SO_Line!FieldValTrim,V.Local.sSql)
+		F.ODBC.Connection!Con.ExecuteAndReturn(V.Local.sSql,V.Local.sGLAcct)
+		F.Intrinsic.Control.If(V.Local.sGLAcct.Trim,=,"")
+			F.Intrinsic.String.Build("Select Top 1 Acct From V_AR_Batch_Trans Where Invc = '{0}' and Cust = '{1}' and Order_Num = '{2}' and Retain = 0",V.DataTable.BDF(V.Local.i).Invoice Number!FieldValTrim,V.DataTable.BDF(V.Local.i).Customer Number!FieldValTrim,V.DataTable.SOLine(V.Local.iCount).SO_Num!FieldValTrim,V.Local.sSql)
+			F.ODBC.Connection!Con.ExecuteAndReturn(V.Local.sSql,V.Local.sGLAcct)
+		F.Intrinsic.Control.EndIf
+		F.Intrinsic.String.Build("Select Top 1 Salsm From V_AR_Batch_Trans Where Invc = '{0}' and Cust = '{1}' and Order_Num = '{2}' Order by Salsm Desc",V.DataTable.BDF(V.Local.i).Invoice Number!FieldValTrim,V.DataTable.BDF(V.Local.i).Customer Number!FieldValTrim,V.DataTable.SOLine(V.Local.iCount).SO_Num!FieldValTrim,V.Local.sSql)
+		F.ODBC.Connection!Con.ExecuteAndReturn(V.Local.sSql,V.Local.sSalesman)
+		F.Intrinsic.String.Build("Select Top 1 Inv_Date_Sql From V_AR_Batch_Trans Where Invc = '{0}' and Cust = '{1}' and Order_Num = '{2}' Order by Inv_Date_Sql Desc",V.DataTable.BDF(V.Local.i).Invoice Number!FieldValTrim,V.DataTable.BDF(V.Local.i).Customer Number!FieldValTrim,V.DataTable.SOLine(V.Local.iCount).SO_Num!FieldValTrim,V.Local.sSql)
+		F.ODBC.Connection!Con.ExecuteAndReturn(V.Local.sSql,V.Local.sInvoiceDate)
+		F.Intrinsic.String.Format(V.Local.sInvoiceDate,"YYYYMMDD",V.Local.sInvoiceDate2)
+		F.Intrinsic.String.Format(V.Local.sInvoiceDate,"MMDDYY",V.Local.sInvoiceDate)
+		F.Intrinsic.String.Build("Select Top 1 Due_Date_Seql From V_AR_Batch_Trans Where Invc = '{0}' and Cust = '{1}' and Order_Num = '{2}' Order by Due_Date_Seql Desc",V.DataTable.BDF(V.Local.i).Invoice Number!FieldValTrim,V.DataTable.BDF(V.Local.i).Customer Number!FieldValTrim,V.DataTable.SOLine(V.Local.iCount).SO_Num!FieldValTrim,V.Local.sSql)
+		F.ODBC.Connection!Con.ExecuteAndReturn(V.Local.sSql,V.Local.sInvoiceDueDate)
+		F.Intrinsic.String.Format(V.Local.sInvoiceDueDate,"YYYYMMDD",V.Local.sInvoiceDueDate)
+		F.Intrinsic.String.Build("Select (Sum(Bill_Amt)*(Ret_Percentage*.01)) From GCG_6417_Prior_Prog Where Order_NO = '{0}' and Prog_Line = '{1}' Group By Order_No,Prog_Line,Ret_Percentage",V.DataTable.SOLine(V.Local.iCount).SO_Num!FieldValTrim,V.DataTable.SOLine(V.Local.iCount).SO_Line!FieldValTrim,V.Local.sSql)
+		F.ODBC.Connection!Con.ExecuteAndReturn(V.Local.sSql,V.Local.fRetAmt)
+		F.Intrinsic.String.Build("Select Sum(Bill_Amt)-(Sum(Bill_Amt)*(Ret_Percentage*.01)) From GCG_6417_Prior_Prog Where Order_NO = '{0}' and Prog_Line = '{1}' Group By Order_No,Prog_Line,Ret_Percentage",V.DataTable.SOLine(V.Local.iCount).SO_Num!FieldValTrim,V.DataTable.SOLine(V.Local.iCount).SO_Line!FieldValTrim,V.Local.sSql)
+		F.ODBC.Connection!Con.ExecuteAndReturn(V.Local.sSql,V.Local.fBillAmt)
+		F.ODBC.Connection!Con.ExecuteAndReturn("Select Top 1 GL_Account From GL_Master Where User_1 = 'RETENTION'",V.Local.sRetGLAcct)
+'		F.ODBC.Connection!Con.ExecuteAndReturn(V.Local.sSql,V.Local.sRetGLAcct)
+		V.Local.sData.Redim(0,21)
+		F.Intrinsic.String.Format(V.Ambient.Date,"YYYYMMDD",V.Local.sData(1))
+		F.Intrinsic.String.RPad(v.Local.sData(3).Trim," ",5,V.Local.sData(3))
+		F.Intrinsic.String.RPad(V.Local.sData(4).Trim," ",7,V.Local.sData(4))
+		F.Intrinsic.String.RPad(V.Local.sData(5).Trim," ",15,V.Local.sData(5))
+		V.Local.sData(2).Set(v.Local.sBatch)
+		V.Local.sData(8).Set("GL")
+		V.Local.sData(9).Set("05")
+		V.Local.sData(10).Set(V.DataTable.BDF(V.Local.i).Customer Number!FieldValTrim)
+		F.Intrinsic.String.RPad(V.Local.sData(10).Trim," ",7,V.Local.sData(10))
+		F.Intrinsic.String.RPad(V.Local.sData(11).Trim," ",7,V.Local.sData(11))
+		F.Intrinsic.String.RPad(V.Local.sData(12).Trim," ",7,V.Local.sData(12))
+		F.Intrinsic.String.LPad(V.DataTable.BDF(V.Local.i).Invoice Number!FieldValTrim," ",15,V.Local.sData(13))
+		F.Intrinsic.String.LPad(V.Local.sInvoiceDate2," ",8,V.Local.sData(14))
+		F.Intrinsic.String.LPad(V.Local.sInvoiceDueDate," ",8,V.Local.sData(15))
+		F.Intrinsic.String.RPad(V.Local.sData(16).Trim," ",2,V.Local.sData(16))
+		F.Intrinsic.String.RPad(V.Local.sData(17).Trim," ",6,V.Local.sData(17))
+		F.Intrinsic.String.RPad(V.Local.sData(18).Trim," ",8,V.Local.sData(18))
+		F.Intrinsic.String.RPad(V.Local.sData(19).Trim," ",16,V.Local.sData(19))
+		F.Intrinsic.String.RPad(V.Local.sData(20).Trim," ",11,V.Local.sData(20))
+		F.Intrinsic.String.RPad(V.Local.sData(21).Trim," ",15,V.Local.sData(21))
+		
+		F.Intrinsic.Math.Add(V.Local.iBatchLine,1,V.Local.iBatchLine)
+		f.Intrinsic.String.LPad(V.Local.iBatchLine, "0", 4, v.Local.sBatchLineNumber)
+		F.Intrinsic.Control.If(V.Local.fRetAmt,>,0)
+			V.Local.fBillAmt.Set(V.Local.fRetAmt)
+			F.Intrinsic.Math.Mult(V.Local.fRetAmt,-1,V.Local.fRetAmt)
+			f.Data.DataTable.AddRow("UPLAROP", "CustNum",V.DataTable.BDF(V.Local.i).Customer Number!FieldValTrim, "InvNum",V.DataTable.BDF(V.Local.i).Invoice Number!FieldValTrim,"TransCode","13", "BatchNum",V.Local.sBatch, "BatchLine", v.Local.sBatchLineNumber,"InvDate", v.Local.sInvoiceDate, "InvTotal", V.Local.fRetAmt, "GLAcct", V.Local.sRetGLAcct, "InvAmt", V.Local.fRetAmt, "InvDueDate", v.Local.sInvoiceDueDate, "Salesman", v.Local.sSalesman)
+		F.Intrinsic.Control.EndIf
+		
+		f.Intrinsic.String.RPad(V.Local.sGLAcct, " ", 15, v.Local.sGLAcct)
+		f.Intrinsic.String.RPad(V.Local.sRetGLAcct, " ", 15, v.Local.sRetGLAcct)
+		
+		F.Intrinsic.Control.If(V.Local.fBillAmt,>,0)
+			F.Intrinsic.Math.Mult(V.Local.fBillAmt,-1,V.Local.fBillAmt)
+			F.Intrinsic.String.LPad(V.Local.fBillAmt," ",16,V.Local.sData(6))
+			'checking credit amount
+			F.Intrinsic.Control.If(V.Local.sBatchDetail.Trim,=,"")
+				F.Intrinsic.String.Build("{0}{1}{2}{3}{4}{5}{6}{7}{8}{9}{10}{11}{12}{13}{14}{15}{16}{17}{18}{19}{20}{21}",V.Local.sGLAcct,V.Local.sData(1),V.Local.sData(2),V.Local.sBatch,V.Local.sData(4),V.Local.sData(5),V.Local.sData(6),V.Local.sData(7),V.Local.sData(8),V.Local.sData(9),V.Local.sData(10),V.Local.sData(11),V.Local.sData(12),V.Local.sData(13),V.Local.sData(14),V.Local.sData(15),V.Local.sData(16),V.Local.sData(17),V.Local.sData(18),V.Local.sData(19),V.Local.sData(20),V.Local.sData(21),V.Local.sBatchDetail)
+			F.Intrinsic.Control.Else
+				F.Intrinsic.String.Build("{0}{1}{2}{3}{4}{5}{6}{7}{8}{9}{10}{11}{12}{13}{14}{15}{16}{17}{18}{19}{20}{21}{22}{23}",V.Local.sBatchDetail,V.Ambient.NewLine,V.Local.sGLAcct,V.Local.sData(1),V.Local.sData(2),V.Local.sBatch,V.Local.sData(4),V.Local.sData(5),V.Local.sData(6),V.Local.sData(7),V.Local.sData(8),V.Local.sData(9),V.Local.sData(10),V.Local.sData(11),V.Local.sData(12),V.Local.sData(13),V.Local.sData(14),V.Local.sData(15),V.Local.sData(16),V.Local.sData(17),V.Local.sData(18),V.Local.sData(19),V.Local.sData(20),V.Local.sData(21),V.Local.sBatchDetail)
+			F.Intrinsic.Control.EndIf
+			'checking debit amount
+			F.Intrinsic.Math.Mult(V.Local.fBillAmt,-1,V.Local.fBillAmt)
+			F.Intrinsic.String.LPad(V.Local.fBillAmt," ",16,V.Local.sData(6))
+			F.Intrinsic.Control.If(V.Local.sBatchDetail.Trim,=,"")
+				F.Intrinsic.String.Build("{0}{1}{2}{3}{4}{5}{6}{7}{8}{9}{10}{11}{12}{13}{14}{15}{16}{17}{18}{19}{20}{21}",V.Local.sRetGLAcct,V.Local.sData(1),V.Local.sData(2),V.Local.sBatch,V.Local.sData(4),V.Local.sData(5),V.Local.sData(6),V.Local.sData(7),V.Local.sData(8),V.Local.sData(9),V.Local.sData(10),V.Local.sData(11),V.Local.sData(12),V.Local.sData(13),V.Local.sData(14),V.Local.sData(15),V.Local.sData(16),V.Local.sData(17),V.Local.sData(18),V.Local.sData(19),V.Local.sData(20),V.Local.sData(21),V.Local.sBatchDetail)
+			F.Intrinsic.Control.Else
+				F.Intrinsic.String.Build("{0}{1}{2}{3}{4}{5}{6}{7}{8}{9}{10}{11}{12}{13}{14}{15}{16}{17}{18}{19}{20}{21}{22}{23}",V.Local.sBatchDetail,V.Ambient.NewLine,V.Local.sRetGLAcct,V.Local.sData(1),V.Local.sData(2),V.Local.sBatch,V.Local.sData(4),V.Local.sData(5),V.Local.sData(6),V.Local.sData(7),V.Local.sData(8),V.Local.sData(9),V.Local.sData(10),V.Local.sData(11),V.Local.sData(12),V.Local.sData(13),V.Local.sData(14),V.Local.sData(15),V.Local.sData(16),V.Local.sData(17),V.Local.sData(18),V.Local.sData(19),V.Local.sData(20),V.Local.sData(21),V.Local.sBatchDetail)
+			F.Intrinsic.Control.EndIf
+		F.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.Next(V.Local.iCount)
+	F.Data.DataTable.Close("SOLine")
+F.Intrinsic.Control.Next(V.Local.i)
+
+F.Intrinsic.Control.If(v.DataTable.UPLAROP.RowCount--,<>,-1)
+	F.Intrinsic.Control.CallSub(UPLAROPSync)
+F.Intrinsic.Control.EndIf
+			
+F.Intrinsic.Control.If(V.Local.sBatchDetail.Trim,<>,"")
+	F.Intrinsic.String.Build("{0}\GLDETAIL.txt",V.Caller.FilesDir,V.Local.sFile)
+	F.Intrinsic.File.String2File(V.Local.sFile,V.Local.sBatchDetail)
+	
+	'1Shot Callwrapper for GL Detail
+	F.Global.General.CallWrapperSync(50, "UPLGDETL/U")
+	
+	F.Intrinsic.File.Exists(V.Local.sFile,V.Local.bRet)
+	F.Intrinsic.Control.If(V.Local.bRet)
+		F.Intrinsic.File.DeleteFile(V.Local.sFile)
+	F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("UPLGDETL_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: GCG_6417_Progress_UPLGDETL.g2u {0}{0}Subroutine: {1}{0}Error Occurred {2} with description {3}",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Exit)
+Function.Intrinsic.Control.EndIf
+Program.Sub.UPLGDETL.End
+
+Program.Sub.Get_Sales_Hist.Start
+F.Intrinsic.Control.SetErrorHandler("Get_Sales_Hist_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String,"")
+V.Local.sSql.Declare(String,"")
+V.Local.i.Declare(Long,0)
+V.Local.iCount.Declare(Long,0)
+
+F.Intrinsic.Control.For(V.Local.i,0,V.DataTable.BDF.RowCount--,1)
+	F.Intrinsic.String.Build("Select SO_NUM, SO_LINE From PRT_Laser_Invoice Where Invoice_NO = '{0}' and Customer = '{1}' and Invoice_Type = 'S' and Terminal_No = '{2}'",V.DataTable.BDF(V.Local.i).Invoice Number!FieldValTrim,V.DataTable.BDF(V.Local.i).Customer Number!FieldValTrim,V.Caller.Terminal,V.Local.sSql)
+	F.Data.DataTable.CreateFromSQL("SOLine","con",V.Local.sSql,True)
+	F.Intrinsic.Control.For(V.Local.iCount,0,V.DataTable.SOLine.RowCount--,1)
+		F.Intrinsic.String.Build("Select  ORDER_NO, Prog_Line, Record_No, Part, Percentage, Ret_Percentage, Bill_Amt, AR_Account From GCG_6417_Prior_Prog Where ORDER_NO = '{0}' and Prog_Line = '{1}'",V.DataTable.SOLine(V.Local.iCount).SO_Num!FieldValTrim,V.DataTable.SOLine(V.Local.iCount).SO_Line!FieldValTrim,V.Local.sSql)
+		F.Data.DataTable.CreateFromSQL("INVCHIST","Con",V.Local.sSql,True)
+		F.Data.DataTable.AddColumn("INVCHIST","Invoice",String)
+		F.Data.DataTable.SetValue("INVCHIST",-1,"Invoice",V.DataTable.BDF(V.Local.i).Invoice Number!FieldValTrim)
+		F.Data.DataTable.SaveToDB("INVCHIST","con","GCG_6417_HPrior_Prog"," ",128,"INVOICE@!@INVOICE*!*ORDER_NO@!@ORDER_NO*!*Prog_Line@!@Prog_Line*!*Record_No@!@Record_No*!*Part@!@Part*!*Percentage@!@Percentage*!*Ret_Percentage@!@Ret_Percentage*!*Bill_Amt@!@Bill_Amt*!*AR_Account@!@AR_Account")
+		F.Data.DataTable.Close("INVCHIST")
+	f.Intrinsic.Control.Next(v.Local.iCount)
+	F.Data.DataTable.Close("SOLine")
+F.Intrinsic.Control.Next(V.Local.i)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Get_Sales_Hist_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: GCG_6417_Progress_UPLGDETL.g2u {0}{0}Subroutine: {1}{0}Error Occurred {2} with description {3}",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Exit)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Get_Sales_Hist.End
